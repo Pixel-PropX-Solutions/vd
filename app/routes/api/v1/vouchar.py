@@ -265,10 +265,10 @@ async def createVouchar(
                     ),
                     "godown": item.godown if item.godown else "",
                     "godown_id": item.godown_id if item.godown_id else "",
-                    "tax_rate": None,
-                    "tax_amount": None,
-                    "hsn_code": None,
-                    "unit": item.unit if item.unit else None,
+                    "tax_rate": 0,
+                    "tax_amount": 0,
+                    "hsn_code": '',
+                    "unit": item.unit if item.unit else '',
                 }
                 await inventory_repo.new(InventoryItem(**item_data))
 

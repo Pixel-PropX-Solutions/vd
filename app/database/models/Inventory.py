@@ -61,7 +61,7 @@ class InventoryItemUpdate(BaseModel):
     hsn_code: Optional[str] = None
     unit: Optional[str] = None
     
-    quantity: int
+    quantity: float
     rate: float
     amount: float
     discount_amount: Optional[float] = 0.0
@@ -80,7 +80,7 @@ class CreateInventoryItemWithTAX(BaseModel):
     hsn_code: Optional[str] = None
     unit: Optional[str] = None
     
-    quantity: int
+    quantity: float
     rate: float
     amount: float
     discount_amount: Optional[float] = 0.0
@@ -101,7 +101,7 @@ class UpdateInventoryItemWithTAX(BaseModel):
     hsn_code: Optional[str] = None
     unit: Optional[str] = None
     
-    quantity: int
+    quantity: float
     rate: float
     amount: float
     discount_amount: Optional[float] = 0.0
