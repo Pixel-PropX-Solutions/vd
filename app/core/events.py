@@ -2,6 +2,7 @@ from typing import Callable
 import asyncio
 from fastapi import FastAPI
 from loguru import logger
+import sys
 
 from app.database import mongodb
 
@@ -11,8 +12,9 @@ def create_start_app_handler(app: FastAPI) -> Callable:  # type: ignore
     @logger.catch
     async def start_app() -> None:
         try:
-            loop = asyncio.ProactorEventLoop()
-            asyncio.set_event_loop(loop)
+            if sys.platform.startswith("win"):
+                loop = asyncio.ProactorEventLoop()
+                asyncio.set_event_loop(loop)
             await mongodb.client.admin.command("ping")
             logger.info("MongoDB Connected.")
         except Exception as e:

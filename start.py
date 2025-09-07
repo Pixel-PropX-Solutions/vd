@@ -2,12 +2,12 @@ from app.Config import ENV_PROJECT
 import os
 import sys
 import asyncio
-from asyncio.windows_events import ProactorEventLoop
 
 from fastapi import FastAPI
 from uvicorn import Config, Server
 
 if sys.platform.startswith("win"):
+    from asyncio.windows_events import ProactorEventLoop
     asyncio.set_event_loop(asyncio.ProactorEventLoop())
 
 
@@ -15,11 +15,17 @@ print("🔥 start.py is executing...")
 
 if __name__ == "__main__":
     try:
-        class ProactorServer(Server):
-            def run(self, sockets=None):
-                loop = ProactorEventLoop()
-                asyncio.set_event_loop(loop) # since this is the default in Python 3.10, explicit selection can also be omitted
-                asyncio.run(self.serve(sockets=sockets))
+        if sys.platform.startswith("win"):
+            class ProactorServer(Server):
+                def run(self, sockets=None):
+                    loop = ProactorEventLoop()
+                    asyncio.set_event_loop(loop)
+                    asyncio.run(self.serve(sockets=sockets))
+                    
+            server_class = ProactorServer
+        else:
+            # On Linux/macOS just use normal Server
+            server_class = Server
                 
         port = int(os.environ.get("PORT", 8010))
         print(f"🚀 Starting server on port {port}...")
