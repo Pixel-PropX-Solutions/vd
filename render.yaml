@@ -93,9 +93,7 @@ services:
   - fromGroup: token_expiry
 
   region: oregon
-  buildCommand: |
-    pip install -r requirements.txt
-    playwright install
+  buildCommand: pip install -r requirements.txt && playwright install --with-deps
   startCommand: python start.py
   autoDeployTrigger: commit
 version: "1"
