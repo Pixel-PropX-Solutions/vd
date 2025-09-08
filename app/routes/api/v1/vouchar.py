@@ -1200,7 +1200,7 @@ async def print_invoice(
 
     if not invoice_data:
         raise http_exception.ResourceNotFoundException(
-            details='No Invoices found with the requested details.'
+            details="No Invoices found with the requested details."
         )
 
     invoice = invoice_data[0]
@@ -1275,9 +1275,18 @@ async def print_invoice(
     rendered_html = template.render(**template_vars)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+            ],
+        )
         page = await browser.new_page()
-        await page.set_content(rendered_html, wait_until="networkidle")
+        await page.set_content(rendered_html, wait_until="load")
         pdf_bytes = await page.pdf(
             format="A4",
             print_background=True,
@@ -1374,8 +1383,8 @@ async def print_invoice_tax(
 
     if not invoice_data:
         raise http_exception.ResourceNotFoundException(
-            detail='No Invoices found with the requested details.'
-            )
+            detail="No Invoices found with the requested details."
+        )
 
     invoice = invoice_data[0]
     items = []
@@ -1429,7 +1438,7 @@ async def print_invoice_tax(
             "totals": totals,
             "tax_headers": tax_headers,
             "taxes": invoice_taxes,
-            'items': items,
+            "items": items,
         },
         "party": {
             "name": invoice.get("party_details", {}).get("ledger_name", ""),
@@ -1476,20 +1485,26 @@ async def print_invoice_tax(
         ),
     }
 
-
     if invoice.get("voucher_type", "") == "Sales":
-        async with aiofiles.open(
-            "app/utils/templates/tax_sale_template.html", "r"
-        ) as f:
+        async with aiofiles.open("app/utils/templates/tax_sale_template.html", "r") as f:
             template_str = await f.read()
 
         template = Template(template_str)
         rendered_html = template.render(**template_vars)
-        
+
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-software-rasterizer",
+                ],
+            )
             page = await browser.new_page()
-            await page.set_content(rendered_html, wait_until="networkidle")
+            await page.set_content(rendered_html, wait_until="load")
             pdf_bytes = await page.pdf(
                 format="A4",
                 print_background=True,
@@ -1503,7 +1518,9 @@ async def print_invoice_tax(
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": "inline; filename=sale-invoice-vyapar-drishti.pdf"},
+            headers={
+                "Content-Disposition": "inline; filename=sale-invoice-vyapar-drishti.pdf"
+            },
         )
 
     else:
@@ -1515,11 +1532,19 @@ async def print_invoice_tax(
         template = Template(template_str)
         rendered_html = template.render(**template_vars)
 
-        
         async with async_playwright() as p:
-            browser = await p.chromium.launch()
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-software-rasterizer",
+                ],
+            )
             page = await browser.new_page()
-            await page.set_content(rendered_html, wait_until="networkidle")
+            await page.set_content(rendered_html, wait_until="load")
             pdf_bytes = await page.pdf(
                 format="A4",
                 print_background=True,
@@ -1530,7 +1555,9 @@ async def print_invoice_tax(
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": "inline; filename=purchase-invoice-vyapar-drishti.pdf"},
+            headers={
+                "Content-Disposition": "inline; filename=purchase-invoice-vyapar-drishti.pdf"
+            },
         )
 
 
@@ -1616,7 +1643,7 @@ async def print_receipt(
 
     if not invoice_data:
         raise http_exception.ResourceNotFoundException(
-            detail='No Receipts found with the requested details.'
+            detail="No Receipts found with the requested details."
         )
 
     invoice = invoice_data[0]
@@ -1665,9 +1692,18 @@ async def print_receipt(
     template = Template(template_str)
     rendered_html = template.render(**template_vars)
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+            ],
+        )
         page = await browser.new_page()
-        await page.set_content(rendered_html, wait_until="networkidle")
+        await page.set_content(rendered_html, wait_until="load")
         pdf_bytes = await page.pdf(
             format="A4",
             print_background=True,
@@ -1773,7 +1809,7 @@ async def print_payment(
 
     if not invoice_data:
         raise http_exception.ResourceNotFoundException(
-            detail='No Payment found with the requested details.'
+            detail="No Payment found with the requested details."
         )
 
     invoice = invoice_data[0]
@@ -1832,11 +1868,20 @@ async def print_payment(
 
     template = Template(template_str)
     rendered_html = template.render(**template_vars)
-    
+
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+            ],
+        )
         page = await browser.new_page()
-        await page.set_content(rendered_html, wait_until="networkidle")
+        await page.set_content(rendered_html, wait_until="load")
         pdf_bytes = await page.pdf(
             format="A4",
             print_background=True,
