@@ -1,9 +1,7 @@
-from app.Config import ENV_PROJECT
 import os
 import sys
 import asyncio
 
-from fastapi import FastAPI
 from uvicorn import Config, Server
 
 if sys.platform.startswith("win"):
