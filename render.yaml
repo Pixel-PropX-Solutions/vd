@@ -84,6 +84,7 @@ services:
   region: oregon
   dockerfilePath: ./Dockerfile
   autoDeployTrigger: commit
+
   envVars:
   - key: GEMINI_API_KEY
     sync: false

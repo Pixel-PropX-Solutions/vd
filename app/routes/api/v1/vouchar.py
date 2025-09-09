@@ -41,7 +41,8 @@ from num2words import num2words
 from math import ceil
 import sys
 from datetime import datetime
-from playwright.async_api import async_playwright
+# from playwright.async_api import async_playwright
+from app.core.services import browser as shared_browser
 
 Vouchar = APIRouter()
 
@@ -1274,25 +1275,13 @@ async def print_invoice(
     template = Template(template_str)
     rendered_html = template.render(**template_vars)
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-            ],
-        )
-        page = await browser.new_page()
-        await page.set_content(rendered_html, wait_until="load")
-        pdf_bytes = await page.pdf(
-            format="A4",
-            print_background=True,
-            margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
-        )
-        await browser.close()
+    page = await shared_browser.new_page()
+    await page.set_content(rendered_html, wait_until="domcontentloaded")
+    pdf_bytes = await page.pdf(
+        format="A4",
+        print_background=True,
+        margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
+    )
 
     return Response(
         content=pdf_bytes,
@@ -1492,29 +1481,17 @@ async def print_invoice_tax(
         template = Template(template_str)
         rendered_html = template.render(**template_vars)
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-software-rasterizer",
-                ],
-            )
-            page = await browser.new_page()
-            await page.set_content(rendered_html, wait_until="load")
-            pdf_bytes = await page.pdf(
-                format="A4",
-                print_background=True,
-                margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
-                # display_header_footer=True,
-                # header_template="<span style='font-size:10px'>Header</span>",
-                # footer_template="<span style='font-size:10px'>Page <span class='pageNumber'></span> of <span class='totalPages'></span></span>",
-            )
-            await browser.close()
-
+        page = await shared_browser.new_page()
+        await page.set_content(rendered_html, wait_until="domcontentloaded")
+        pdf_bytes = await page.pdf(
+            format="A4",
+            print_background=True,
+            margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
+            # display_header_footer=True,
+            # header_template="<span style='font-size:10px'>Header</span>",
+            # footer_template="<span style='font-size:10px'>Page <span class='pageNumber'></span> of <span class='totalPages'></span></span>",
+        )
+            
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -1532,25 +1509,13 @@ async def print_invoice_tax(
         template = Template(template_str)
         rendered_html = template.render(**template_vars)
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-software-rasterizer",
-                ],
-            )
-            page = await browser.new_page()
-            await page.set_content(rendered_html, wait_until="load")
-            pdf_bytes = await page.pdf(
-                format="A4",
-                print_background=True,
-                margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
-            )
-            await browser.close()
+        page = await shared_browser.new_page()
+        await page.set_content(rendered_html, wait_until="domcontentloaded")
+        pdf_bytes = await page.pdf(
+            format="A4",
+            print_background=True,
+            margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
+        )
 
         return Response(
             content=pdf_bytes,
@@ -1691,25 +1656,13 @@ async def print_receipt(
 
     template = Template(template_str)
     rendered_html = template.render(**template_vars)
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-            ],
-        )
-        page = await browser.new_page()
-        await page.set_content(rendered_html, wait_until="load")
-        pdf_bytes = await page.pdf(
-            format="A4",
-            print_background=True,
-            margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
-        )
-        await browser.close()
+    page = await shared_browser.new_page()
+    await page.set_content(rendered_html, wait_until="domcontentloaded")
+    pdf_bytes = await page.pdf(
+        format="A4",
+        print_background=True,
+        margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
+    )
 
     return Response(
         content=pdf_bytes,
@@ -1869,25 +1822,13 @@ async def print_payment(
     template = Template(template_str)
     rendered_html = template.render(**template_vars)
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-            ],
-        )
-        page = await browser.new_page()
-        await page.set_content(rendered_html, wait_until="load")
-        pdf_bytes = await page.pdf(
-            format="A4",
-            print_background=True,
-            margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
-        )
-        await browser.close()
+    page = await shared_browser.new_page()
+    await page.set_content(rendered_html, wait_until="domcontentloaded")
+    pdf_bytes = await page.pdf(
+        format="A4",
+        print_background=True,
+        margin={"top": "1cm", "bottom": "1cm", "left": "1cm", "right": "1cm"},
+    )
 
     return Response(
         content=pdf_bytes,
