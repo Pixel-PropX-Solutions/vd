@@ -41,8 +41,10 @@ from num2words import num2words
 from math import ceil
 import sys
 from datetime import datetime
+
 # from playwright.async_api import async_playwright
-from app.core.services import browser as shared_browser
+# from app.core.services import browser as shared_browser
+import app.core.services as browser_module
 
 Vouchar = APIRouter()
 
@@ -1275,7 +1277,10 @@ async def print_invoice(
     template = Template(template_str)
     rendered_html = template.render(**template_vars)
 
-    page = await shared_browser.new_page()
+    if browser_module.browser is None:
+        raise RuntimeError("Browser is not ready yet")
+
+    page = await browser_module.browser.new_page()
     await page.set_content(rendered_html, wait_until="domcontentloaded")
     pdf_bytes = await page.pdf(
         format="A4",
@@ -1481,7 +1486,7 @@ async def print_invoice_tax(
         template = Template(template_str)
         rendered_html = template.render(**template_vars)
 
-        page = await shared_browser.new_page()
+        page = await browser_module.browser.new_page()
         await page.set_content(rendered_html, wait_until="domcontentloaded")
         pdf_bytes = await page.pdf(
             format="A4",
@@ -1491,7 +1496,7 @@ async def print_invoice_tax(
             # header_template="<span style='font-size:10px'>Header</span>",
             # footer_template="<span style='font-size:10px'>Page <span class='pageNumber'></span> of <span class='totalPages'></span></span>",
         )
-            
+
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -1509,7 +1514,7 @@ async def print_invoice_tax(
         template = Template(template_str)
         rendered_html = template.render(**template_vars)
 
-        page = await shared_browser.new_page()
+        page = await browser_module.browser.new_page()
         await page.set_content(rendered_html, wait_until="domcontentloaded")
         pdf_bytes = await page.pdf(
             format="A4",
@@ -1656,7 +1661,7 @@ async def print_receipt(
 
     template = Template(template_str)
     rendered_html = template.render(**template_vars)
-    page = await shared_browser.new_page()
+    page = await browser_module.browser.new_page()
     await page.set_content(rendered_html, wait_until="domcontentloaded")
     pdf_bytes = await page.pdf(
         format="A4",
@@ -1822,7 +1827,7 @@ async def print_payment(
     template = Template(template_str)
     rendered_html = template.render(**template_vars)
 
-    page = await shared_browser.new_page()
+    page = await browser_module.browser.new_page()
     await page.set_content(rendered_html, wait_until="domcontentloaded")
     pdf_bytes = await page.pdf(
         format="A4",
