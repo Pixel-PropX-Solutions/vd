@@ -688,7 +688,7 @@
     {% if total_items <= 18 and total_hsn <=4 %} 
     {{ invoice_header() }} 
     {{ items_table(invoice["items"]) }} 
-    {% set empty_space = page_body_height - ((invoice["items"]|length * row_height) + 40) %}
+    {% set empty_space = page_body_height - ([total_hsn * row_height, 65]|max) %}
     {{ fill_space(empty_space) }} 
     {{ totals_section(invoice["taxes"], last_page=True) }} 
     {{ invoice_footer() }}
@@ -700,7 +700,7 @@
     {{ invoice_header() }}
     {{ items_table(invoice["items"]) }}
     {% set empty_space = page_body_height - (invoice["items"]|length * row_height) %}
-    {% set taxes_height = ((invoice["taxes"]|length * row_height) + 25) %}
+    {% set taxes_height = ([total_hsn * row_height, 65]|max) %}
     {% if empty_space > taxes_height %}
         {{ fill_space(empty_space - taxes_height) }}
         {{ totals_section(invoice["taxes"], last_page=True) }}
@@ -713,7 +713,7 @@
         {# Page 2: totals only #}
         {{ invoice_header() }}
         {{ totals_section(invoice["taxes"], last_page=True) }}
-        {% set empty_space = page_body_height - ((invoice["taxes"]|length * row_height) + 20) %}
+        {% set empty_space = page_body_height - ([total_hsn * row_height, 65]|max) %}
         {{ fill_space(empty_space) }}
         {{ invoice_footer() }}
     {% endif %}
@@ -732,7 +732,7 @@
     {# Page 2: totals #}
     {{ invoice_header() }}
     {{ totals_section(invoice["taxes"], last_page=True) }}
-    {% set empty_space = page_body_height - ((invoice["taxes"]|length * row_height) + 20) %}
+    {% set empty_space = page_body_height - ([total_hsn * row_height, 65]|max) %}
     {{ fill_space(empty_space) }}
     {{ invoice_footer() }}
 
@@ -761,7 +761,7 @@
                         {{ invoice_header() }}
                     {% endif %}
                     {{ totals_section(hsn_chunk, last_page=loop.last) }}
-                    {% set empty_space = page_body_height - ((hsn_chunk|length * row_height) + 20) %}
+                    {% set empty_space = page_body_height - ([hsn_chunk|length * row_height, 65]|max) %}
                     {{ fill_space(empty_space) }}
                     {{ invoice_footer() }}
                 {% endfor %}

@@ -179,9 +179,9 @@
                                 style="text-align: left !important; width: 100% !important; border-collapse: collapse; vertical-align: top !important;"
                                 cellpadding="1" cellspacing="0">
                                 <tr>
-                                    <td style="font-size: 18px !important; 
+                                    <td style="font-size: 14px !important; 
                                         font-weight: bold !important; 
-                                        margin-bottom: 2mm !important;">
+                                        margin-bottom: 1mm !important;">
                                         {{
                                         company.company_name
                                         }}
@@ -659,7 +659,7 @@
     {% if total_items <= 20 and total_hsn <=4 %} 
         {{ invoice_header() }} 
         {{ items_table(invoice["items"]) }} 
-        {% set empty_space = page_body_height - ((invoice["items"]|length * row_height) + (invoice["taxes"]|length * row_height) + 20) %}
+        {% set empty_space = page_body_height - ((invoice["items"]|length * row_height) + ([invoice["taxes"]|length * row_height, 30]|max)) %}
         {{ fill_space(empty_space) }}
         {{ totals_section(invoice["taxes"], last_page=True) }} 
         {{ invoice_footer() }} 
@@ -670,7 +670,7 @@
         {{ invoice_header() }}
         {{ items_table(invoice["items"]) }}
         {% set empty_space = page_body_height - (invoice["items"]|length * row_height) %}
-        {% set taxes_height = ((invoice["taxes"]|length * row_height) + 25) %}
+        {% set taxes_height = ([invoice["taxes"]|length * row_height, 30]|max) %}
         {% if empty_space > taxes_height %}
             {{ fill_space(empty_space - taxes_height) }}
             {{ totals_section(invoice["taxes"], last_page=True) }}
@@ -683,7 +683,7 @@
             {# Page 2: totals only #}
             {{ invoice_header() }}
             {{ totals_section(invoice["taxes"], last_page=True) }}
-            {% set empty_space = page_body_height - ((invoice["taxes"]|length * row_height) + 20) %}
+            {% set empty_space = page_body_height - ([invoice["taxes"]|length * row_height, 30]|max) %}
             {{ fill_space(empty_space) }}
             {{ invoice_footer() }}
         {% endif %}
@@ -701,7 +701,7 @@
         {# Page 2: totals #}
         {{ invoice_header() }}
         {{ totals_section(invoice["taxes"], last_page=True) }}
-        {% set empty_space = page_body_height - ((invoice["taxes"]|length * row_height) + 20) %}
+        {% set empty_space = page_body_height - ([invoice["taxes"]|length * row_height, 30]|max) %}
         {{ fill_space(empty_space) }}
         {{ invoice_footer() }}
         
@@ -730,7 +730,7 @@
                     {{ invoice_header() }}
                     {% endif %}
                     {{ totals_section(hsn_chunk, last_page=loop.last) }}
-                    {% set empty_space = page_body_height - ((hsn_chunk|length * row_height) + 20) %}
+                    {% set empty_space = page_body_height - ([hsn_chunk|length * row_height, 30]|max) %}
                     {{ fill_space(empty_space) }}
                     {{ invoice_footer() }}
                 {% endfor %}

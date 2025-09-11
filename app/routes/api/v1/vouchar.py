@@ -1096,7 +1096,7 @@ async def getTimeline(
     start_date: str = "",
     end_date: str = "",
     page_no: int = Query(1, ge=1),
-    limit: int = Query(10, le=sys.maxsize),
+    limit: int = Query(ge=10, le=sys.maxsize),
     sortField: str = "created_at",
     sortOrder: SortingOrder = SortingOrder.DESC,
 ):
@@ -1226,13 +1226,14 @@ async def print_invoice(
 
     grand_total = invoice.get("grand_total", 0)
     total_words = num2words(grand_total, lang="en_IN").title() + " Rupees Only"
+    formatted_date =  invoice.get("date", "")[:10] if invoice.get("date", "") else ""
 
     # Template variables
     template_vars = {
         "invoice": {
             "voucher_type": invoice.get("voucher_type", ""),
             "voucher_number": invoice.get("voucher_number", ""),
-            "date": invoice.get("date", ""),
+            "date": formatted_date,
             "vehicle_number": invoice.get("vehicle_number", ""),
             "mode_of_transport": invoice.get("mode_of_transport", ""),
             "payment_mode": invoice.get("payment_mode", ""),
@@ -1408,12 +1409,13 @@ async def print_invoice_tax(
         current_user=current_user,
     )
 
+    formatted_date =  invoice.get("date", "")[:10] if invoice.get("date", "") else ""
     # Template variables
     template_vars = {
         "invoice": {
             "voucher_type": invoice.get("voucher_type", ""),
             "voucher_number": invoice.get("voucher_number", ""),
-            "date": invoice.get("date", ""),
+            "date": formatted_date,
             "vehicle_number": invoice.get("vehicle_number", ""),
             "mode_of_transport": invoice.get("mode_of_transport", ""),
             "payment_mode": invoice.get("payment_mode", ""),
@@ -1631,14 +1633,7 @@ async def print_receipt(
     else:
         total_words = num2words(total_int, lang="en_IN").title() + " Rupees Only"
 
-    # Template variables
-    date_val = invoice.get("date", "")
-    if hasattr(date_val, "strftime"):
-        formatted_date = date_val.strftime("%d %b, %Y")
-    elif isinstance(date_val, str) and date_val:
-        formatted_date = date_val  # Already a string, use as-is
-    else:
-        formatted_date = ""
+    formatted_date =  invoice.get("date", "")[:10] if invoice.get("date", "") else ""
 
     template_vars = {
         "invoice": {
@@ -1786,13 +1781,7 @@ async def print_payment(
         total_words = num2words(total_int, lang="en_IN").title() + " Rupees Only"
 
     # Template variables
-    date_val = invoice.get("date", "")
-    if hasattr(date_val, "strftime"):
-        formatted_date = date_val.strftime("%d %b, %Y")
-    elif isinstance(date_val, str) and date_val:
-        formatted_date = date_val  # Already a string, use as-is
-    else:
-        formatted_date = ""
+    formatted_date =  invoice.get("date", "")[:10] if invoice.get("date", "") else ""
 
     # Extract year from "2025-05-01" style date string
     year_val = ""
