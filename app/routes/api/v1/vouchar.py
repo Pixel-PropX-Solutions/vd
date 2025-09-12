@@ -953,7 +953,7 @@ async def view_all_vouchar(
     end_date: str = None,
     page_no: int = Query(1, ge=1),
     limit: int = Query(10, le=sys.maxsize),
-    sortField: str = "created_at",
+    sortField: str = "date",
     sortOrder: SortingOrder = SortingOrder.DESC,
 ):
     if current_user.user_type != "user" and current_user.user_type != "admin":
