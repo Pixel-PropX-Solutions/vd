@@ -15,7 +15,15 @@ from app.utils.cloudinary_client import cloudinary_client
 import re
 from typing import Any, Dict, Optional
 import sys
-
+from pymongo.errors import (
+    DuplicateKeyError,
+    WriteError,
+    WriteConcernError,
+    OperationFailure,
+    ConnectionFailure,
+    NetworkTimeout,
+    PyMongoError,
+)
 
 Product = APIRouter()
 
@@ -387,7 +395,17 @@ async def get_product_details(
                     },
                     "avg_purchase_rate": {
                         "$cond": [
-                            {"$gt": ["$purchase_qty", 0]},
+                            {
+                                "$gt": [
+                                    {
+                                        "$add": [
+                                            {"$ifNull": ["$purchase_value", 0]},
+                                            {"$ifNull": ["$opening_value", 0]},
+                                        ]
+                                    },
+                                    0,
+                                ]
+                            },
                             {
                                 "$round": [
                                     {
@@ -762,7 +780,7 @@ async def view_all_stock_items(
     group: str = None,
     # is_deleted: bool = False,
     page_no: int = Query(1, ge=1),
-    limit: int = Query(10, le=60),
+    limit: int = Query(10, le=sys.maxsize),
     sortField: str = "created_at",
     sortOrder: SortingOrder = SortingOrder.DESC,
 ):
@@ -849,20 +867,20 @@ async def update_product(
     unit: str = Form(...),
     unit_id: str = Form(...),
     # optional fields
-    alias_name: str = Form(''),
-    category: str = Form(''),
-    group: str = Form(''),
-    category_id: str = Form(''),
-    group_id: str = Form(''),
-    image: UploadFile = File(''),
-    description: str = Form(''),
+    alias_name: str = Form(""),
+    category: str = Form(""),
+    group: str = Form(""),
+    category_id: str = Form(""),
+    group_id: str = Form(""),
+    image: UploadFile = File(""),
+    description: str = Form(""),
     # Additonal Optional fields
     opening_balance: float = Form(0),
     opening_rate: float = Form(0),
     opening_value: float = Form(0),
-    nature_of_goods: str = Form(''),
-    hsn_code: str = Form(''),
-    taxability: str = Form(''),
+    nature_of_goods: str = Form(""),
+    hsn_code: str = Form(""),
+    taxability: str = Form(""),
     tax_rate: float = Form(0),
     low_stock_alert: float = Form(10),
     current_user: TokenData = Depends(get_current_user),
@@ -944,26 +962,39 @@ async def update_product(
     if image:
         update_fields["image"] = image_url
 
-    response = await stock_item_repo.update_one(
-        {
-            "_id": product_id,
-            "user_id": current_user.user_id,
-            "is_deleted": False,
-            "company_id": current_user.current_company_id
-            or userSettings["current_company_id"],
-        },
-        {"$set": update_fields},
-    )
-
-    if not response:
-        raise http_exception.ResourceAlreadyExistsException(
-            detail="Product Already Exists"
+    try:
+        await stock_item_repo.update_one(
+            {
+                "_id": product_id,
+                "user_id": current_user.user_id,
+                "is_deleted": False,
+                "company_id": current_user.current_company_id
+                or userSettings["current_company_id"],
+            },
+            {"$set": update_fields},
         )
 
-    return {
-        "success": True,
-        "message": "Product Updated Successfully",
-    }
+        return {
+            "success": True,
+            "message": "Product Updated Successfully",
+        }
+    except DuplicateKeyError:
+        raise http_exception.DuplicateKeyException(
+            detail="A product with this name and unit already exists in the company."
+        )
+    except (WriteError, OperationFailure) as e:
+        raise http_exception.BadRequestException(
+            detail=f"Invalid update operation: {str(e)}"
+        )
+    except (ConnectionFailure, NetworkTimeout):
+        raise http_exception.ServiceUnavailableException(
+            detail="Database is unavailable. Please try again later."
+        )
+    except PyMongoError as e:
+        # Generic fallback for unexpected pymongo errors
+        raise http_exception.InternalServerErrorException(
+            detail=f"Database error: {str(e)}"
+        )
 
 
 @Product.put(
@@ -1021,21 +1052,40 @@ async def update_product_details(
     for k, v in dict(product_details).items():
         updated_dict[k] = v
 
-    await stock_item_repo.update_one(
-        {
-            "_id": product_id,
-            "user_id": current_user.user_id,
-            "is_deleted": False,
-            "company_id": current_user.current_company_id
-            or userSettings["current_company_id"],
-        },
-        {"$set": updated_dict, "$currentDate": {"updated_at": True}},
-    )
+    try:
+        await stock_item_repo.update_one(
+            {
+                "_id": product_id,
+                "user_id": current_user.user_id,
+                "is_deleted": False,
+                "company_id": current_user.current_company_id
+                or userSettings["current_company_id"],
+            },
+            {"$set": updated_dict, "$currentDate": {"updated_at": True}},
+        )
 
-    return {
-        "success": True,
-        "message": "Product details Updated Successfully",
-    }
+        return {
+            "success": True,
+            "message": "Product Updated Successfully",
+        }
+    except DuplicateKeyError:
+        raise http_exception.DuplicateKeyException(
+            detail="A product with this name and unit already exists in the company."
+        )
+    except (WriteError, OperationFailure) as e:
+        raise http_exception.BadRequestException(
+            detail=f"Invalid update operation: {str(e)}"
+        )
+    except (ConnectionFailure, NetworkTimeout):
+        raise http_exception.ServiceUnavailableException(
+            detail="Database is unavailable. Please try again later."
+        )
+    except PyMongoError as e:
+        # Generic fallback for unexpected pymongo errors
+        raise http_exception.InternalServerErrorException(
+            detail=f"Database error: {str(e)}"
+        )
+
 
 
 @Product.delete(
