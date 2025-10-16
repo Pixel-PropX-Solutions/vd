@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import Depends
 from app.Config import ENV_PROJECT
 from app.database.models.StockItem import StockItem, StockItemDB
@@ -16,6 +17,11 @@ from app.database.repositories.crud.base import (
 from pydantic import BaseModel
 from typing import List, Any
 import re
+from datetime import datetime, timedelta
+
+
+async def fetch_all(cursor):
+    return [doc async for doc in cursor]
 
 
 class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
@@ -776,20 +782,16 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
         ]
 
         # Run stats pipeline first (no search/category/group filters)
-        stats_res = [doc async for doc in self.collection.aggregate(stats_pipeline)]
-        res = [doc async for doc in self.collection.aggregate(pipeline)]
-        categories_res = [
-            doc
-            async for doc in category_repo.collection.aggregate(
-                unique_categories_pipeline
-            )
-        ]
-        groups_res = [
-            doc
-            async for doc in inventory_group_repo.collection.aggregate(
-                unique_groups_pipeline
-            )
-        ]
+        response = await asyncio.gather(
+            fetch_all(self.collection.aggregate(stats_pipeline)),
+            fetch_all(self.collection.aggregate(pipeline)),
+            fetch_all(category_repo.collection.aggregate(unique_categories_pipeline)),
+            fetch_all(inventory_group_repo.collection.aggregate(unique_groups_pipeline)),
+        )
+        stats_res = response[0]
+        res = response[1]
+        categories_res = response[2]
+        groups_res = response[3]
 
         docs = res[0]["docs"]
         count = res[0]["count"][0]["count"] if len(res[0]["count"]) > 0 else 0
@@ -907,7 +909,7 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
             },
             {
                 "$unwind": {
-                    "path": "$inventory_entries",
+                    "path": "$inventory_entries", "preserveNullAndEmptyArrays": True
                 }
             },
             {
@@ -922,7 +924,7 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
             },
             {
                 "$unwind": {
-                    "path": "$voucher",
+                    "path": "$voucher", "preserveNullAndEmptyArrays": True
                 }
             },
             {
@@ -941,6 +943,7 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
                     "updated_at": {"$first": "$updated_at"},
                     "group": {"$first": "$group"},
                     "opening_balance": {"$first": "$opening_balance"},
+                    "opening_value": {"$first": "$opening_value"},
                     "purchase_qty": {
                         "$sum": {
                             "$cond": [
@@ -1302,20 +1305,16 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
             {"$sort": {"group": 1}},
         ]
 
-        # Run stats pipeline first (no search/category/group filters)
-        res = [doc async for doc in self.collection.aggregate(pipeline)]
-        categories_res = [
-            doc
-            async for doc in category_repo.collection.aggregate(
-                unique_categories_pipeline
-            )
-        ]
-        groups_res = [
-            doc
-            async for doc in inventory_group_repo.collection.aggregate(
-                unique_groups_pipeline
-            )
-        ]
+        response = await asyncio.gather(
+            fetch_all(self.collection.aggregate(pipeline)),
+            fetch_all(category_repo.collection.aggregate(unique_categories_pipeline)),
+            fetch_all(inventory_group_repo.collection.aggregate(unique_groups_pipeline)),
+        )
+
+        res = response[0]
+        categories_res = response[1]
+        groups_res = response[2]
+
         docs = res[0]["docs"]
         count = res[0]["count"][0]["count"] if len(res[0]["count"]) > 0 else 0
         unique_categories = [entry["category"] for entry in categories_res]
@@ -1366,7 +1365,7 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
             },
             {
                 "$unwind": {
-                    "path": "$inventory_entries",
+                    "path": "$inventory_entries",  "preserveNullAndEmptyArrays": True
                 }
             },
             {
@@ -1381,7 +1380,7 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
             },
             {
                 "$unwind": {
-                    "path": "$voucher",
+                    "path": "$voucher",  "preserveNullAndEmptyArrays": True
                 }
             },
             {
@@ -1843,7 +1842,17 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
                         "$round": [
                             {
                                 "$cond": [
-                                    {"$gt": ["$purchase_qty", 0]},
+                                    {
+                                        "$gt": [
+                                            {
+                                                "$add": [
+                                                    {"$ifNull": ["$purchase_qty", 0]},
+                                                    {"$ifNull": ["$opening_balance", 0]},
+                                                ]
+                                            },
+                                            0,
+                                        ]
+                                    },
                                     {
                                         "$divide": [
                                             {
@@ -1920,21 +1929,14 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
             {"$sort": {"group": 1}},
         ]
 
-        res = [doc async for doc in self.collection.aggregate(pipeline)]
-
-        categories_res = [
-            doc
-            async for doc in category_repo.collection.aggregate(
-                unique_categories_pipeline
-            )
-        ]
-
-        group_res = [
-            doc
-            async for doc in inventory_group_repo.collection.aggregate(
-                unique_groups_pipeline
-            )
-        ]
+        response = await asyncio.gather(
+            fetch_all(self.collection.aggregate(pipeline)),
+            fetch_all(category_repo.collection.aggregate(unique_categories_pipeline)),
+            fetch_all(inventory_group_repo.collection.aggregate(unique_groups_pipeline)),
+        )
+        res = response[0]
+        categories_res = response[1]
+        group_res = response[2]
 
         docs = res[0]["docs"]
         count = res[0]["count"][0]["count"] if len(res[0]["count"]) > 0 else 0
@@ -2031,33 +2033,1324 @@ class StockItemRepo(BaseMongoDbCrud[StockItemDB]):
         ]
 
         res = [doc async for doc in self.collection.aggregate(pipeline)]
-        print("Product Timeline Result:", res)
+
         if not res:
-            return {"message": "No product found with the given ID."}
+            return {"message": "The product has no timeline data."}
         return res
 
-    # async def group_products_by_stock_level(self, chemist_id: str):
-    #     pipeline = [
-    #         {
-    #             "$set": {
-    #                 "stock_level": {
-    #                     "$switch": {
-    #                         "branches": [
-    #                             {"case": {"$lte": ["$quantity", 10]}, "then": "Low"},
-    #                             {
-    #                                 "case": {"$gte": ["$quantity", 200]},
-    #                                 "then": "Overstock",
-    #                             },
-    #                         ],
-    #                         "default": "Medium",
-    #                     }
-    #                 }
-    #             }
-    #         },
-    #         {"$group": {"_id": "$stock_level", "count": {"$sum": 1}}},
-    #     ]
+    async def viewTimeline(
+        self,
+        search: str,
+        company_id: str,
+        pagination: PageRequest,
+        sort: Sort,
+        category: str = "",
+        current_user: TokenData = Depends(get_current_user),
+        start_date: datetime = None,
+        end_date: datetime = None,
+    ):
+        start_date = start_date[:10]
+        end_date = end_date[:10]
+        filter_params = {
+            "user_id": current_user.user_id,
+            "company_id": company_id,
+        }
 
-    #     return await self.collection.aggregate(pipeline).to_list(None)
+        pipeline = [
+            # Start from StockItem (ensures all items included)
+            {
+                "$match": filter_params,
+            },
+            # Lookup for the Stock Item in Inventory and then to the related voucher
+            {
+                "$lookup": {
+                    "from": "Inventory",
+                    "let": {"item_id": "$_id"},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$item_id", "$$item_id"]}}},
+                        {
+                            "$lookup": {
+                                "from": "Voucher",
+                                "let": {"vouchar_id": "$vouchar_id"},
+                                "pipeline": [
+                                    {
+                                        "$match": {
+                                            "$expr": {"$eq": ["$_id", "$$vouchar_id"]}
+                                        }
+                                    },
+                                    {
+                                        "$project": {
+                                            "_id": 1,
+                                            "date": 1,
+                                            "voucher_number": 1,
+                                            "voucher_type": 1,
+                                            "additional_charge": 1,
+                                        }
+                                    },
+                                ],
+                                "as": "voucher_info",
+                            }
+                        },
+                        {
+                            "$unwind": {
+                                "path": "$voucher_info",
+                                "preserveNullAndEmptyArrays": True,
+                            }
+                        },
+                        {
+                            "$project": {
+                                "_id": 1,
+                                "item_id": 1,
+                                "vouchar_id": 1,
+                                "quantity": 1,
+                                "total_amount": 1,
+                                "voucher_info": 1,
+                            }
+                        },
+                    ],
+                    "as": "all_txns",
+                }
+            },
+            {
+                "$addFields": {
+                    # filter rows before start_date
+                    "txns_before_start": {
+                        "$filter": {
+                            "input": "$all_txns",
+                            "as": "t",
+                            "cond": {
+                                # convert voucher_info.date strings (YYYY-MM-DD) to dates for comparison
+                                "$lt": ["$$t.voucher_info.date", start_date]
+                            },
+                        }
+                    },
+                    # filter rows within [start_date, end_date]
+                    "txns_in_range": {
+                        "$filter": {
+                            "input": "$all_txns",
+                            "as": "t",
+                            "cond": {
+                                "$and": [
+                                    {"$gte": ["$$t.voucher_info.date", start_date]},
+                                    {"$lte": ["$$t.voucher_info.date", end_date]},
+                                ]
+                            },
+                        }
+                    },
+                }
+            },
+            # Calculating the purchase and sale quantity and value for the filtered transactions
+            {
+                "$addFields": {
+                    "before_summary": {
+                        "$reduce": {
+                            "input": "$txns_before_start",
+                            "initialValue": {
+                                "purchase_qty": 0,
+                                "purchase_value": 0,
+                                "sales_qty": 0,
+                                "sales_value": 0,
+                            },
+                            "in": {
+                                "$mergeObjects": [
+                                    "$$value",
+                                    {
+                                        "purchase_qty": {
+                                            "$add": [
+                                                "$$value.purchase_qty",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Purchase",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.quantity",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "purchase_value": {
+                                            "$add": [
+                                                "$$value.purchase_value",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Purchase",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.total_amount",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "sales_qty": {
+                                            "$add": [
+                                                "$$value.sales_qty",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Sales",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.quantity",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "sales_value": {
+                                            "$add": [
+                                                "$$value.sales_value",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Sales",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.total_amount",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                    },
+                                ]
+                            },
+                        }
+                    },
+                    # reduce txns_in_range to sums
+                    "range_summary": {
+                        "$reduce": {
+                            "input": "$txns_in_range",
+                            "initialValue": {
+                                "purchase_qty": 0,
+                                "purchase_value": 0,
+                                "sales_qty": 0,
+                                "sales_value": 0,
+                            },
+                            "in": {
+                                "$mergeObjects": [
+                                    "$$value",
+                                    {
+                                        "purchase_qty": {
+                                            "$add": [
+                                                "$$value.purchase_qty",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Purchase",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.quantity",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "purchase_value": {
+                                            "$add": [
+                                                "$$value.purchase_value",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Purchase",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.total_amount",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "sales_qty": {
+                                            "$add": [
+                                                "$$value.sales_qty",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Sales",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.quantity",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "sales_value": {
+                                            "$add": [
+                                                "$$value.sales_value",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Sales",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.total_amount",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                    },
+                                ]
+                            },
+                        }
+                    },
+                }
+            },
+            # Add the fields opening qty, rate, value from the stock item
+            {
+                "$addFields": {
+                    # original stored opening values (from StockItem document)
+                    "orig_opening_balance": {"$ifNull": ["$opening_balance", 0]},
+                    "orig_opening_rate": {"$ifNull": ["$opening_rate", 0]},
+                    "orig_opening_value": {
+                        "$ifNull": [
+                            "$opening_value",
+                            {
+                                "$multiply": [
+                                    {"$ifNull": ["$opening_balance", 0]},
+                                    {"$ifNull": ["$opening_rate", 0]},
+                                ]
+                            },
+                        ]
+                    },
+                    # opening adjustments from txns before start
+                    "before_purchase_qty": {
+                        "$ifNull": ["$before_summary.purchase_qty", 0]
+                    },
+                    "before_purchase_value": {
+                        "$ifNull": ["$before_summary.purchase_value", 0]
+                    },
+                    "before_sales_qty": {"$ifNull": ["$before_summary.sales_qty", 0]},
+                    "before_sales_value": {"$ifNull": ["$before_summary.sales_value", 0]},
+                    # period (start..end) sums
+                    "period_purchase_qty": {
+                        "$ifNull": ["$range_summary.purchase_qty", 0]
+                    },
+                    "period_purchase_value": {
+                        "$ifNull": ["$range_summary.purchase_value", 0]
+                    },
+                    "period_sales_qty": {"$ifNull": ["$range_summary.sales_qty", 0]},
+                    "period_sales_value": {"$ifNull": ["$range_summary.sales_value", 0]},
+                }
+            },
+            # Calculating the purchase and sale rate for the filtered transactions
+            {
+                "$addFields": {
+                    # opening adjustments from txns before start
+                    "before_purchase_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$before_purchase_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$before_purchase_value", 0]},
+                                    {"$ifNull": ["$before_purchase_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    "before_sales_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$before_sales_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$before_sales_value", 0]},
+                                    {"$ifNull": ["$before_sales_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    # period (start..end) sums
+                    "period_purchase_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$period_purchase_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$period_purchase_value", 0]},
+                                    {"$ifNull": ["$period_purchase_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    "period_sales_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$period_sales_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$period_sales_value", 0]},
+                                    {"$ifNull": ["$period_sales_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    "avg_purchase_rate": { 
+                        "$cond": [
+                            {"$gt": [{"$ifNull": [{"$sum": ["$orig_opening_balance", "$before_purchase_qty"]}, 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$sum": ["$orig_opening_value", "$before_purchase_value" ]},
+                                    {"$sum": ["$orig_opening_balance", "$before_purchase_qty"]},
+                                ]
+                            },
+                            0
+                        ]
+                    }
+                }
+            },
+            {
+                "$addFields": {
+                    # Opening quantity = stored opening_balance + purchases before start - sales before start
+                    "opening_qty": {
+                        "$add": [
+                            {"$ifNull": ["$orig_opening_balance", 0]},
+                            {"$ifNull": ["$before_purchase_qty", 0]},
+                            {"$multiply": [-1, {"$ifNull": ["$before_sales_qty", 0]}]},
+                        ]
+                    },
+                    # Opening value prefer orig_opening_value, but if missing compute from orig_opening_rate * orig_opening_balance
+                    "opening_value": {
+                        "$add": [
+                            {"$ifNull": ["$orig_opening_value", 0]},
+                            {"$ifNull": ["$before_purchase_value", 0]},
+                            {
+                                "$multiply": [
+                                    -1,
+                                    {"$ifNull": ["$before_sales_qty", 0]},
+                                    "$avg_purchase_rate",
+                                ]
+                            },
+                        ]
+                    },
+                }
+            },
+            {
+                "$addFields": {
+                    # combined_total_qty (used for avg cost calculation)
+                    "combined_qty_for_avg": {
+                        "$add": [
+                            {"$ifNull": ["$orig_opening_balance", 0]},
+                            {"$ifNull": ["$before_purchase_qty", 0]},
+                            {"$ifNull": ["$period_purchase_qty", 0]},
+                        ]
+                    },
+                    # combined_total_value for avg cost
+                    "combined_value_for_avg": {
+                        "$add": [
+                            {"$ifNull": ["$orig_opening_value", 0]},
+                            {"$ifNull": ["$before_purchase_value", 0]},
+                            {"$ifNull": ["$period_purchase_value", 0]},
+                        ]
+                    },
+                }
+            },
+            {
+                "$addFields": {
+                    # purchase rate during period
+                    "inwards_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$period_purchase_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$period_purchase_value", 0]},
+                                    {"$ifNull": ["$period_purchase_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    # outwards rate during period
+                    "outwards_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$period_sales_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$period_sales_value", 0]},
+                                    {"$ifNull": ["$period_sales_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    # average cost (weighted) used for COGS: if combined_qty_for_avg > 0 else fallback to opening_rate (or 0)
+                    "avg_cost_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$combined_qty_for_avg", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$combined_value_for_avg", 0]},
+                                    {"$ifNull": ["$combined_qty_for_avg", 0]},
+                                ]
+                            },
+                            1,
+                        ]
+                    },
+                }
+            },
+            {
+                "$addFields": {
+                    # COGS for sales in period = period_sales_qty * avg_cost_rate
+                    "cogs": {
+                        "$multiply": [
+                            {"$ifNull": ["$period_sales_qty", 0]},
+                            {"$ifNull": ["$avg_cost_rate", 0]},
+                        ]
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    # gross profit = sales_value - cogs
+                    "gross_profit": {
+                        "$subtract": [
+                            {"$ifNull": ["$period_sales_value", 0]},
+                            {"$ifNull": ["$cogs", 0]},
+                        ]
+                    },
+                }
+            },
+            {
+                "$addFields": {
+                    # profit percent
+                    "profit_percent": {
+                        "$multiply": [
+                            {
+                                "$cond": [
+                                    {"$gt": [{"$ifNull": ["$period_sales_value", 0]}, 0]},
+                                    {
+                                        "$divide": [
+                                            {"$ifNull": ["$gross_profit", 0]},
+                                            {"$ifNull": ["$period_sales_value", 0]},
+                                        ]
+                                    },
+                                    0,
+                                ]
+                            },
+                            100,
+                        ]
+                    },
+                    # closing quantity
+                    "closing_qty": {
+                        "$subtract": [
+                            {
+                                "$add": [
+                                    {"$ifNull": ["$opening_qty", 0]},
+                                    {"$ifNull": ["$period_purchase_qty", 0]},
+                                ]
+                            },
+                            {"$ifNull": ["$period_sales_qty", 0]},
+                        ]
+                    },
+                    # closing_rate
+                    "closing_rate": {"$ifNull": ["$avg_cost_rate", 0]},
+                    # closing value = opening_value + purchase_value - cogs (value of sold items based on avg_cost)
+                    "closing_val": {
+                        "$multiply": [
+                            {
+                                "$subtract": [
+                                    {
+                                        "$add": [
+                                            {"$ifNull": ["$opening_qty", 0]},
+                                            {"$ifNull": ["$period_purchase_qty", 0]},
+                                        ]
+                                    },
+                                    {"$ifNull": ["$period_sales_qty", 0]},
+                                ]
+                            },
+                            {"$ifNull": ["$avg_cost_rate", 0]},
+                        ]
+                    },
+                },
+            },
+            # 8) final project only required fields (rename to desired keys)
+            {
+                "$project": {
+                    "item_id": "$_id",
+                    "item": "$stock_item_name",
+                    "unit": 1,
+                    "category": 1,
+                    # "unit_id": 1,
+                    # opening
+                    "opening_qty": {"$round": ["$opening_qty", 2]},
+                    "opening_rate": {"$round": ["$avg_purchase_rate", 2]},
+                    "opening_val": {"$round": ["$opening_value", 2]},
+                    # period (purchase & sales)
+                    "inwards_qty": {"$round": ["$period_purchase_qty", 2]},
+                    "inwards_val": {"$round": ["$period_purchase_value", 2]},
+                    "inwards_rate": {"$round": ["$inwards_rate", 2]},
+                    "outwards_qty": {"$round": ["$period_sales_qty", 2]},
+                    "outwards_val": {"$round": ["$period_sales_value", 2]},
+                    "outwards_rate": {"$round": ["$outwards_rate", 2]},
+                    # derived
+                    # "avg_cost_rate": 1,
+                    # "cogs": 1,
+                    "gross_profit": {"$round": ["$gross_profit", 2]},
+                    "profit_percent": {"$round": ["$profit_percent", 2]},
+                    "closing_qty": {"$round": ["$closing_qty", 2]},
+                    "closing_rate": {"$round": ["$closing_rate", 2]},
+                    "closing_val": {"$round": ["$closing_val", 2]},
+                }
+            },
+            {
+                "$match": {
+                    **(
+                        {
+                            "$or": [
+                                {
+                                    "item": {
+                                        "$regex": f"{search}",
+                                        "$options": "i",
+                                    }
+                                },
+                                {
+                                    "unit": {
+                                        "$regex": f"{search}",
+                                        "$options": "i",
+                                    }
+                                },
+                                {
+                                    "category": {
+                                        "$regex": f"{search}",
+                                        "$options": "i",
+                                    }
+                                },
+                            ]
+                        }
+                        if search not in ["", None]
+                        else {}
+                    ),
+                }
+            },
+            {"$match": {"category": category} if category not in ["", None] else {}},
+            {
+                "$sort": {"item": -1 if sort.sort_order == SortingOrder.ASC else 1},
+            },
+            {
+                "$facet": {
+                    "docs": [
+                        {"$skip": (pagination.paging.page - 1) * pagination.paging.limit},
+                        {"$limit": pagination.paging.limit},
+                    ],
+                    "count": [{"$count": "count"}],
+                }
+            },
+        ]
+
+        meta_pipeline = [
+            # Start from StockItem (ensures all items included)
+            {
+                "$match": filter_params,
+            },
+            {
+                "$lookup": {
+                    "from": "Inventory",
+                    "let": {"item_id": "$_id"},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$item_id", "$$item_id"]}}},
+                        {
+                            "$lookup": {
+                                "from": "Voucher",
+                                "let": {"vouchar_id": "$vouchar_id"},
+                                "pipeline": [
+                                    {
+                                        "$match": {
+                                            "$expr": {"$eq": ["$_id", "$$vouchar_id"]}
+                                        }
+                                    },
+                                    {
+                                        "$project": {
+                                            "_id": 1,
+                                            "date": 1,
+                                            "voucher_number": 1,
+                                            "voucher_type": 1,
+                                            "additional_charge": 1,
+                                        }
+                                    },
+                                ],
+                                "as": "voucher_info",
+                            }
+                        },
+                        {
+                            "$unwind": {
+                                "path": "$voucher_info",
+                                "preserveNullAndEmptyArrays": True,
+                            }
+                        },
+                        {
+                            "$project": {
+                                "_id": 1,
+                                "item_id": 1,
+                                "vouchar_id": 1,
+                                "quantity": 1,
+                                "total_amount": 1,
+                                "voucher_info": 1,
+                            }
+                        },
+                    ],
+                    "as": "all_txns",
+                }
+            },
+            {
+                "$addFields": {
+                    # filter rows before start_date
+                    "txns_before_start": {
+                        "$filter": {
+                            "input": "$all_txns",
+                            "as": "t",
+                            "cond": {
+                                # convert voucher_info.date strings (YYYY-MM-DD) to dates for comparison
+                                "$lt": ["$$t.voucher_info.date", start_date]
+                            },
+                        }
+                    },
+                    # filter rows within [start_date, end_date]
+                    "txns_in_range": {
+                        "$filter": {
+                            "input": "$all_txns",
+                            "as": "t",
+                            "cond": {
+                                "$and": [
+                                    {"$gte": ["$$t.voucher_info.date", start_date]},
+                                    {"$lte": ["$$t.voucher_info.date", end_date]},
+                                ]
+                            },
+                        }
+                    },
+                }
+            },
+            {
+                "$addFields": {
+                    "before_summary": {
+                        "$reduce": {
+                            "input": "$txns_before_start",
+                            "initialValue": {
+                                "purchase_qty": 0,
+                                "purchase_value": 0,
+                                "sales_qty": 0,
+                                "sales_value": 0,
+                            },
+                            "in": {
+                                "$mergeObjects": [
+                                    "$$value",
+                                    {
+                                        "purchase_qty": {
+                                            "$add": [
+                                                "$$value.purchase_qty",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Purchase",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.quantity",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "purchase_value": {
+                                            "$add": [
+                                                "$$value.purchase_value",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Purchase",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.total_amount",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "sales_qty": {
+                                            "$add": [
+                                                "$$value.sales_qty",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Sales",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.quantity",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "sales_value": {
+                                            "$add": [
+                                                "$$value.sales_value",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Sales",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.total_amount",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                    },
+                                ]
+                            },
+                        }
+                    },
+                    # reduce txns_in_range to sums
+                    "range_summary": {
+                        "$reduce": {
+                            "input": "$txns_in_range",
+                            "initialValue": {
+                                "purchase_qty": 0,
+                                "purchase_value": 0,
+                                "sales_qty": 0,
+                                "sales_value": 0,
+                            },
+                            "in": {
+                                "$mergeObjects": [
+                                    "$$value",
+                                    {
+                                        "purchase_qty": {
+                                            "$add": [
+                                                "$$value.purchase_qty",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Purchase",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.quantity",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "purchase_value": {
+                                            "$add": [
+                                                "$$value.purchase_value",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Purchase",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.total_amount",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "sales_qty": {
+                                            "$add": [
+                                                "$$value.sales_qty",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Sales",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.quantity",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                        "sales_value": {
+                                            "$add": [
+                                                "$$value.sales_value",
+                                                {
+                                                    "$cond": [
+                                                        {
+                                                            "$eq": [
+                                                                "$$this.voucher_info.voucher_type",
+                                                                "Sales",
+                                                            ]
+                                                        },
+                                                        {
+                                                            "$ifNull": [
+                                                                "$$this.total_amount",
+                                                                0,
+                                                            ]
+                                                        },
+                                                        0,
+                                                    ]
+                                                },
+                                            ]
+                                        },
+                                    },
+                                ]
+                            },
+                        }
+                    },
+                }
+            },
+            # 5) compute final fields: opening, purchases, sales
+            {
+                "$addFields": {
+                    # original stored opening values (from StockItem document)
+                    "orig_opening_balance": {"$ifNull": ["$opening_balance", 0]},
+                    "orig_opening_rate": {"$ifNull": ["$opening_rate", 0]},
+                    "orig_opening_value": {
+                        "$ifNull": [
+                            "$opening_value",
+                            {
+                                "$multiply": [
+                                    {"$ifNull": ["$opening_balance", 0]},
+                                    {"$ifNull": ["$opening_rate", 0]},
+                                ]
+                            },
+                        ]
+                    },
+                    # opening adjustments from txns before start
+                    "before_purchase_qty": {
+                        "$ifNull": ["$before_summary.purchase_qty", 0]
+                    },
+                    "before_purchase_value": {
+                        "$ifNull": ["$before_summary.purchase_value", 0]
+                    },
+                    "before_sales_qty": {"$ifNull": ["$before_summary.sales_qty", 0]},
+                    "before_sales_value": {"$ifNull": ["$before_summary.sales_value", 0]},
+                    # period (start..end) sums
+                    "period_purchase_qty": {
+                        "$ifNull": ["$range_summary.purchase_qty", 0]
+                    },
+                    "period_purchase_value": {
+                        "$ifNull": ["$range_summary.purchase_value", 0]
+                    },
+                    "period_sales_qty": {"$ifNull": ["$range_summary.sales_qty", 0]},
+                    "period_sales_value": {"$ifNull": ["$range_summary.sales_value", 0]},
+                }
+            },
+            {
+                "$addFields": {
+                    # opening adjustments from txns before start
+                    "before_purchase_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$before_purchase_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$before_purchase_value", 0]},
+                                    {"$ifNull": ["$before_purchase_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    "before_sales_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$before_sales_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$before_sales_value", 0]},
+                                    {"$ifNull": ["$before_sales_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    # period (start..end) sums
+                    "period_purchase_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$period_purchase_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$period_purchase_value", 0]},
+                                    {"$ifNull": ["$period_purchase_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    "period_sales_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$period_sales_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$period_sales_value", 0]},
+                                    {"$ifNull": ["$period_sales_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    "avg_purchase_rate": { 
+                        "$cond": [
+                            {"$gt": [{"$ifNull": [{"$sum": ["$orig_opening_balance", "$before_purchase_qty"]}, 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$sum": ["$orig_opening_value", "$before_purchase_value" ]},
+                                    {"$sum": ["$orig_opening_balance", "$before_purchase_qty"]},
+                                ]
+                            },
+                            0
+                        ]
+                    }
+                }
+            },
+            # 6) compute opening_qty/value, average cost, cogs, profit, closing
+            {
+                "$addFields": {
+                    # Opening quantity = stored opening_balance + purchases before start - sales before start
+                    "opening_qty": {
+                        "$add": [
+                            {"$ifNull": ["$orig_opening_balance", 0]},
+                            {"$ifNull": ["$before_purchase_qty", 0]},
+                            {"$multiply": [-1, {"$ifNull": ["$before_sales_qty", 0]}]},
+                        ]
+                    },
+                    # Opening value prefer orig_opening_value, but if missing compute from orig_opening_rate * orig_opening_balance
+                    "opening_value": {
+                        "$add": [
+                            {"$ifNull": ["$orig_opening_value", 0]},
+                            {"$ifNull": ["$before_purchase_value", 0]},
+                            {
+                                "$multiply": [
+                                    -1,
+                                    {"$ifNull": ["$before_sales_qty", 0]},
+                                    "$avg_purchase_rate",
+                                ]
+                            },
+                        ]
+                    },
+                }
+            },
+            {
+                "$addFields": {
+                    # combined_total_qty (used for avg cost calculation)
+                    "combined_qty_for_avg": {
+                        "$add": [
+                            {"$ifNull": ["$opening_qty", 0]},
+                            {"$ifNull": ["$before_purchase_qty", 0]},
+                            {"$ifNull": ["$period_purchase_qty", 0]},
+                        ]
+                    },
+                    # combined_total_value for avg cost
+                    "combined_value_for_avg": {
+                        "$add": [
+                            {"$ifNull": ["$opening_value", 0]},
+                            {"$ifNull": ["$before_purchase_value", 0]},
+                            {"$ifNull": ["$period_purchase_value", 0]},
+                        ]
+                    },
+                }
+            },
+            # 7) calculate rates, cogs, gross profit, closing values
+            {
+                "$addFields": {
+                    # purchase rate during period
+                    "inwards_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$period_purchase_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$period_purchase_value", 0]},
+                                    {"$ifNull": ["$period_purchase_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    # outwards rate during period
+                    "outwards_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$period_sales_qty", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$period_sales_value", 0]},
+                                    {"$ifNull": ["$period_sales_qty", 0]},
+                                ]
+                            },
+                            0,
+                        ]
+                    },
+                    # average cost (weighted) used for COGS: if combined_qty_for_avg > 0 else fallback to opening_rate (or 0)
+                    "avg_cost_rate": {
+                        "$cond": [
+                            {"$gt": [{"$ifNull": ["$combined_qty_for_avg", 0]}, 0]},
+                            {
+                                "$divide": [
+                                    {"$ifNull": ["$combined_value_for_avg", 0]},
+                                    {"$ifNull": ["$combined_qty_for_avg", 0]},
+                                ]
+                            },
+                            {
+                                "$cond": [
+                                    {"$gt": [{"$ifNull": ["$opening_qty", 0]}, 0]},
+                                    {
+                                        "$divide": [
+                                            {"$ifNull": ["$opening_value", 0]},
+                                            {"$ifNull": ["$opening_qty", 0]},
+                                        ]
+                                    },
+                                    0,
+                                ]
+                            },
+                        ]
+                    },
+                }
+            },
+            {
+                "$addFields": {
+                    # COGS for sales in period = period_sales_qty * avg_cost_rate
+                    "cogs": {
+                        "$multiply": [
+                            {"$ifNull": ["$period_sales_qty", 0]},
+                            {"$ifNull": ["$avg_cost_rate", 0]},
+                        ]
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    # gross profit = sales_value - cogs
+                    "gross_profit": {
+                        "$subtract": [
+                            {"$ifNull": ["$period_sales_value", 0]},
+                            {"$ifNull": ["$cogs", 0]},
+                        ]
+                    },
+                }
+            },
+            {
+                "$addFields": {
+                    # profit percent
+                    "profit_percent": {
+                        "$multiply": [
+                            {
+                                "$cond": [
+                                    {"$gt": [{"$ifNull": ["$period_sales_value", 0]}, 0]},
+                                    {
+                                        "$divide": [
+                                            {"$ifNull": ["$gross_profit", 0]},
+                                            {"$ifNull": ["$period_sales_value", 0]},
+                                        ]
+                                    },
+                                    0,
+                                ]
+                            },
+                            100,
+                        ]
+                    },
+                    # closing quantity
+                    "closing_qty": {
+                        "$subtract": [
+                            {
+                                "$add": [
+                                    {"$ifNull": ["$opening_qty", 0]},
+                                    {"$ifNull": ["$period_purchase_qty", 0]},
+                                ]
+                            },
+                            {"$ifNull": ["$period_sales_qty", 0]},
+                        ]
+                    },
+                    # closing_rate
+                    "closing_rate": {"$ifNull": ["$avg_cost_rate", 0]},
+                    # closing value = opening_value + purchase_value - cogs (value of sold items based on avg_cost)
+                    "closing_val": {
+                        "$multiply": [
+                            {
+                                "$subtract": [
+                                    {
+                                        "$add": [
+                                            {"$ifNull": ["$opening_qty", 0]},
+                                            {"$ifNull": ["$period_purchase_qty", 0]},
+                                        ]
+                                    },
+                                    {"$ifNull": ["$period_sales_qty", 0]},
+                                ]
+                            },
+                            {"$ifNull": ["$avg_cost_rate", 0]},
+                        ]
+                    },
+                },
+            },
+            # 8) final project only required fields (rename to desired keys)
+            {
+                "$project": {
+                    "item_id": "$_id",
+                    "item": "$stock_item_name",
+                    "unit": 1,
+                    # "unit_id": 1,
+                    # opening
+                    "opening_qty": {"$round": ["$opening_qty", 2]},
+                    "opening_rate": {"$round": ["$avg_purchase_rate", 2]},
+                    "opening_val": {"$round": ["$opening_value", 2]},
+                    # period (purchase & sales)
+                     "inwards_qty": {"$round": ["$period_purchase_qty", 2]},
+                    "inwards_val": {"$round": ["$period_purchase_value", 2]},
+                    "inwards_rate": {"$round": ["$inwards_rate", 2]},
+                    "outwards_qty": {"$round": ["$period_sales_qty", 2]},
+                    "outwards_val": {"$round": ["$period_sales_value", 2]},
+                    "outwards_rate": {"$round": ["$outwards_rate", 2]},
+                    # derived
+                    # "avg_cost_rate": 1,
+                    # "cogs": 1,
+                    "gross_profit": {"$round": ["$gross_profit", 2]},
+                    "profit_percent": {"$round": ["$profit_percent", 2]},
+                    "closing_qty": {"$round": ["$closing_qty", 2]},
+                    "closing_rate": {"$round": ["$closing_rate", 2]},
+                    "closing_val": {"$round": ["$closing_val", 2]},
+                }
+            },
+        ]
+
+        response = await asyncio.gather(
+            fetch_all(self.collection.aggregate(pipeline)),
+            fetch_all(self.collection.aggregate(meta_pipeline)),
+        )
+        res = response[0]
+        totals_res = response[1]
+        docs = res[0]["docs"]
+        opening_val = sum((doc.get("opening_val") or 0) for doc in totals_res)
+        inwards_val = sum((doc.get("inwards_val") or 0) for doc in totals_res)
+        outwards_val = sum((doc.get("outwards_val") or 0) for doc in totals_res)
+        closing_val = sum((doc.get("closing_val") or 0) for doc in totals_res)
+        gross_profit = sum((doc.get("gross_profit") or 0) for doc in totals_res)
+        profit_percent = gross_profit / outwards_val * 100 if outwards_val != 0 else 0
+
+        count = res[0]["count"][0]["count"] if len(res[0]["count"]) > 0 else 0
+
+        class Meta2(Page):
+            total: int
+            opening_val: float
+            inwards_val: float
+            outwards_val: float
+            closing_val: float
+            gross_profit: float
+            profit_percent: float
+
+        class PaginatedResponse2(BaseModel):
+            docs: List[Any]
+            meta: Meta2
+
+        return PaginatedResponse2(
+            docs=docs,
+            meta=Meta2(
+                page=pagination.paging.page,
+                limit=pagination.paging.limit,
+                total=count,
+                opening_val=round(opening_val, 2),
+                inwards_val=round(inwards_val, 2),
+                outwards_val=round(outwards_val, 2),
+                closing_val=round(closing_val, 2),
+                gross_profit=round(gross_profit, 2),
+                profit_percent=round(profit_percent, 2),
+            ),
+        )
 
 
 stock_item_repo = StockItemRepo()

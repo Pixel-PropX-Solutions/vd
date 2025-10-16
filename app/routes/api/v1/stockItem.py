@@ -52,7 +52,7 @@ async def create_product(
     hsn_code: str = Form(None),
     taxability: str = Form(None),
     tax_rate: float = Form(0.0),
-    low_stock_alert: float = Form(10.0),
+    low_stock_alert: float = Form(5.0),
     current_user: TokenData = Depends(get_current_user),
 ):
     if current_user.user_type != "user" and current_user.user_type != "admin":
@@ -109,17 +109,33 @@ async def create_product(
         "hsn_code": hsn_code,
         "taxability": taxability,
         "tax_rate": tax_rate,
-        "low_stock_alert": low_stock_alert,
+        "low_stock_alert": low_stock_alert or 5.0,
     }
 
-    response = await stock_item_repo.new(StockItem(**product_data))
+    try:
+        await stock_item_repo.new(StockItem(**product_data))
 
-    if not response:
-        raise http_exception.ResourceAlreadyExistsException(
-            detail="Product Already Exists"
+        return {
+            "success": True,
+            "message": "Product Created Successfully",
+        }
+    except DuplicateKeyError:
+        raise http_exception.DuplicateKeyException(
+            detail="A product with this name and unit already exists in the company."
         )
-
-    return {"success": True, "message": "Product Created Successfully"}
+    except (WriteError, OperationFailure) as e:
+        raise http_exception.BadRequestException(
+            detail=f"Invalid create operation: {str(e)}"
+        )
+    except (ConnectionFailure, NetworkTimeout):
+        raise http_exception.ServiceUnavailableException(
+            detail="Database is unavailable. Please try again later."
+        )
+    except PyMongoError as e:
+        # Generic fallback for unexpected pymongo errors
+        raise http_exception.InternalServerErrorException(
+            detail=f"Database error: {str(e)}"
+        )
 
 
 @Product.get(
@@ -207,7 +223,9 @@ async def get_product(
     if product:
         return {"success": True, "data": product}
     else:
-        raise http_exception.ResourceNotFoundException()
+        raise http_exception.ResourceNotFoundException(
+            detail='Product Not Found'
+        )
 
 
 @Product.get(

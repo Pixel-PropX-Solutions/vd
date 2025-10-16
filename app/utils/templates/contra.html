@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Voucher</title>
+    <title>Contra Voucher</title>
     <style>
         @media print {
             @page {
@@ -118,7 +118,7 @@
                 </td>
             </tr>
             <tr>
-                <td class="title">Payment Invoice</td>
+                <td class="title">Contra Invoice</td>
             </tr>
         </table>
 
@@ -132,7 +132,7 @@
         <table class="main-table">
             <tr class="row-with-border">
                 <td>
-                    <strong>Paid To:</strong><br>
+                    <strong>Transferred To:</strong><br>
                     &nbsp;&nbsp;&nbsp;&nbsp;{{invoice.party_name}}
                 </td>
                 <td class="amount-cell">&#8377; &nbsp;{{invoice.amount}}</td>
@@ -148,7 +148,7 @@
         <table class="main-table bottom-section">
             <tr>
                 <td style="">
-                    <strong>Paid By :</strong><br>
+                    <strong>Transferred from :</strong><br>
                     &nbsp;&nbsp;&nbsp;&nbsp;{{invoice.customer}}<br><br>
                     <strong>On Account of :</strong><br>
                     &nbsp;&nbsp;&nbsp;&nbsp;{{invoice.narration}}<br><br>

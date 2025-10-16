@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Voucher</title>
+    <title>Journal Voucher</title>
     <style>
         @media print {
             @page {
@@ -98,7 +98,6 @@
         }
 
         .final-amount {
-            border-top: 1px solid #000;
             border-bottom: 1px solid #000;
             font-weight: bold;
             text-align: right;
@@ -118,7 +117,7 @@
                 </td>
             </tr>
             <tr>
-                <td class="title">Payment Invoice</td>
+                <td class="title">Journal Invoice</td>
             </tr>
         </table>
 
@@ -133,10 +132,16 @@
             <tr class="row-with-border">
                 <td>
                     <strong>Paid To:</strong><br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;{{invoice.party_name}}
                 </td>
-                <td class="amount-cell">&#8377; &nbsp;{{invoice.amount}}</td>
             </tr>
+             {% for debtor in invoice.debtors %}
+            <tr class="">
+                <td>
+                    &nbsp;&nbsp;&nbsp;&nbsp;{{debtor.name}}
+                </td>
+                <td class="amount-cell">&#8377; &nbsp;{{debtor.amount}}</td>
+            </tr>
+            {% endfor %}
             <tr>
                 <td class="particulars-section">
                 </td>
@@ -149,13 +154,26 @@
             <tr>
                 <td style="">
                     <strong>Paid By :</strong><br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;{{invoice.customer}}<br><br>
-                    <strong>On Account of :</strong><br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;{{invoice.narration}}<br><br>
-                    <strong>Amount (in words) :</strong><br>
+
+                </td>
+                <td class=""></td>
+            </tr>
+             {% for creditor in invoice.creditors %}
+            <tr class="">
+                <td>
+                    &nbsp;&nbsp;&nbsp;&nbsp;{{creditor.name}}
+                </td>
+                <td class="amount-cell">&#8377; &nbsp;{{creditor.amount}}</td>
+            </tr>
+            {% endfor %}
+            <tr>
+                <td style="">
+                    <strong>On Account of :</strong><br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;{{invoice.narration}}<br/><br/>
+                    <strong>Amount (in words) :</strong><br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;<span class="amount-words">{{invoice.amount_words}}</span>
                 </td>
-                <td class="final-amount">&#8377; &nbsp;{{invoice.amount}}</td>
+                <td class="final-amount"><br/><br/><br/><br/>&#8377; &nbsp;{{invoice.amount}}</td>
             </tr>
         </table>
 

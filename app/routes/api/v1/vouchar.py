@@ -40,7 +40,10 @@ import aiofiles
 from num2words import num2words
 from math import ceil
 import sys
+from app.Config import ENV_PROJECT
 from datetime import datetime
+from app.utils.mailer_module import template
+from app.utils.mailer_module import mail
 
 # from playwright.async_api import async_playwright
 # from app.core.services import browser as shared_browser
@@ -245,6 +248,7 @@ async def createVouchar(
                             else party_ledger["_id"]
                         ),
                         "amount": entry.amount,
+                        "order_index": entry.order_index,  # assign incremental order index
                     }
                     await accounting_repo.new(Accounting(**entry_data))
 
@@ -255,6 +259,7 @@ async def createVouchar(
                         "ledger": entry.ledger,
                         "ledger_id": entry.ledger_id,
                         "amount": entry.amount,
+                        "order_index": entry.order_index,  # assign incremental order index
                     }
                     await accounting_repo.new(Accounting(**entry_data))
 
@@ -277,6 +282,7 @@ async def createVouchar(
                     "tax_amount": 0,
                     "hsn_code": "",
                     "unit": item.unit if item.unit else "",
+                    "order_index": item.order_index,  # assign incremental order index
                 }
                 await inventory_repo.new(InventoryItem(**item_data))
 
@@ -290,6 +296,48 @@ async def createVouchar(
                     },
                     {"$inc": {"current_number": 1}},
                 )
+
+                customer_ledger = await ledger_repo.findOne(
+                    {
+                        "company_id": current_user.current_company_id,
+                        "ledger_name": vouchar.party_name,
+                        "user_id": current_user.user_id,
+                    }
+                )
+
+                if vouchar.voucher_type in ["Sales", "Purchase"]:
+                    mail.send(
+                        "Vyapar Drishti - Invoice Created",
+                        customer_ledger["email"],
+                        template.InvoiceCreated(
+                            invoice_number=vouchar.voucher_number,
+                            invoice_date=vouchar.date,
+                            customer_name=vouchar.party_name,
+                            total_amount=vouchar.total_amount,
+                            due_date=vouchar.due_date,
+                            payment_status=(
+                                "Paid"
+                                if vouchar.paid_amount >= vouchar.grand_total
+                                else "Unpaid"
+                            ),
+                        ),
+                    )
+                elif vouchar.voucher_type in ["Payment", "Receipt"]:
+                    mail.send(
+                        "Vyapar Drishti - Transaction Created",
+                        customer_ledger["email"],
+                        template.TransactionCreated(
+                            user_name=companyExists["company_name"],
+                            transaction_type=vouchar.voucher_type,
+                            customer_name=customer_ledger["ledger_name"],
+                            currency_symbol="INR",
+                            reference_note=vouchar.narration,
+                            transaction_date=vouchar.date,
+                            amount=vouchar.grand_total,
+                            support_link=f"{ENV_PROJECT.FRONTEND_DOMAIN}/contact",
+                        ),
+                    )
+
                 shouldDecreaseCounter = True
 
         except Exception as e:
@@ -420,6 +468,7 @@ async def updateVouchar(
                     "ledger": entry.ledger,
                     "ledger_id": entry.ledger_id,
                     "amount": entry.amount,
+                    "order_index": entry.order_index,
                 }
 
                 if existing_acc:
@@ -474,6 +523,7 @@ async def updateVouchar(
                     "total_amount": item.total_amount,
                     "godown": item.godown if item.godown else "",
                     "godown_id": item.godown_id if item.godown_id else "",
+                    "order_index": item.order_index,
                 }
                 if existing_item:
                     await inventory_repo.update_one(
@@ -524,7 +574,6 @@ async def createVoucharWithTAX(
     vouchar: VoucherWithTAXCreate,
     current_user: TokenData = Depends(get_current_user),
 ):
-    print("Creating vouchar with TAX:", vouchar)
     if current_user.user_type != "user" and current_user.user_type != "admin":
         raise http_exception.CredentialsInvalidException()
 
@@ -632,16 +681,17 @@ async def createVoucharWithTAX(
                             else party_ledger["_id"]
                         ),
                         "amount": entry.amount,
+                        "order_index": entry.order_index,
                     }
                     await accounting_repo.new(Accounting(**entry_data))
 
                 else:
-
                     entry_data = {
                         "vouchar_id": response.vouchar_id,
                         "ledger": entry.ledger,
                         "ledger_id": entry.ledger_id,
                         "amount": entry.amount,
+                        "order_index": entry.order_index,
                     }
                     await accounting_repo.new(Accounting(**entry_data))
 
@@ -664,6 +714,7 @@ async def createVoucharWithTAX(
                     "tax_amount": item.tax_amount if item.tax_amount else None,
                     "hsn_code": item.hsn_code if item.hsn_code else None,
                     "unit": item.unit if item.unit else None,
+                    "order_index": item.order_index,
                 }
                 await inventory_repo.new(InventoryItem(**item_data))
 
@@ -676,6 +727,47 @@ async def createVoucharWithTAX(
                     },
                     {"$inc": {"current_number": 1}},
                 )
+
+                customer_ledger = await ledger_repo.findOne(
+                    {
+                        "company_id": current_user.current_company_id,
+                        "ledger_name": vouchar.party_name,
+                        "user_id": current_user.user_id,
+                    }
+                )
+
+                if vouchar.voucher_type in ["Sales", "Purchase"]:
+                    mail.send(
+                        "Vyapar Drishti - Invoice Created",
+                        customer_ledger["email"],
+                        template.InvoiceCreated(
+                            invoice_number=vouchar.voucher_number,
+                            invoice_date=vouchar.date,
+                            customer_name=vouchar.party_name,
+                            total_amount=vouchar.total_amount,
+                            due_date=vouchar.due_date,
+                            payment_status=(
+                                "Paid"
+                                if vouchar.paid_amount >= vouchar.grand_total
+                                else "Unpaid"
+                            ),
+                        ),
+                    )
+                elif vouchar.voucher_type in ["Payment", "Receipt"]:
+                    mail.send(
+                        "Vyapar Drishti - Transaction Created",
+                        customer_ledger["email"],
+                        template.TransactionCreated(
+                            user_name=companyExists["company_name"],
+                            transaction_type=vouchar.voucher_type,
+                            customer_name=customer_ledger["ledger_name"],
+                            currency_symbol="INR",
+                            reference_note=vouchar.narration,
+                            transaction_date=vouchar.date,
+                            amount=vouchar.grand_total,
+                            support_link=f"{ENV_PROJECT.FRONTEND_DOMAIN}/contact",
+                        ),
+                    )
                 shouldDecreaseCounter = True
 
         except Exception as e:
@@ -832,6 +924,7 @@ async def updateVoucharWithTAX(
                     "ledger": entry.ledger,
                     "ledger_id": entry.ledger_id,
                     "amount": entry.amount,
+                    "order_index": entry.order_index,
                 }
 
                 if existing_acc:
@@ -894,6 +987,7 @@ async def updateVoucharWithTAX(
                     "total_amount": item.total_amount,
                     "godown": item.godown if item.godown else "",
                     "godown_id": item.godown_id if item.godown_id else "",
+                    "order_index": item.order_index,
                 }
 
                 if existing_item:
@@ -1030,7 +1124,8 @@ async def getVouchar(
                     "from": "Inventory",
                     "let": {"vouchar_id": "$_id"},
                     "pipeline": [
-                        {"$match": {"$expr": {"$eq": ["$vouchar_id", "$$vouchar_id"]}}}
+                        {"$match": {"$expr": {"$eq": ["$vouchar_id", "$$vouchar_id"]}}},
+                        {"$sort": {"order_index": 1}},
                     ],
                     "as": "inventory",
                 }
@@ -1050,7 +1145,8 @@ async def getVouchar(
                     "from": "Accounting",
                     "let": {"vouchar_id": "$_id"},
                     "pipeline": [
-                        {"$match": {"$expr": {"$eq": ["$vouchar_id", "$$vouchar_id"]}}}
+                        {"$match": {"$expr": {"$eq": ["$vouchar_id", "$$vouchar_id"]}}},
+                        {"$sort": {"order_index": 1}},
                     ],
                     "as": "accounting_entries",
                 }
@@ -1114,7 +1210,7 @@ async def getTimeline(
     sort = Sort(sort_field=sortField, sort_order=sortOrder)
     page_request = PageRequest(paging=page, sorting=sort)
 
-    result = await vouchar_repo.viewTimeline(
+    result = await stock_item_repo.viewTimeline(
         search=search,
         company_id=current_user.current_company_id,
         category=category,
@@ -1180,6 +1276,7 @@ async def getHsnSummary(
         "data": result,
     }
 
+
 @Vouchar.get(
     "/get/summary/stats",
     response_class=ORJSONResponse,
@@ -1196,7 +1293,7 @@ async def getSummaryStats(
 
     userSettings = await user_settings_repo.findOne({"user_id": current_user.user_id})
 
-    if userSettings is None: 
+    if userSettings is None:
         raise http_exception.ResourceNotFoundException(
             detail="User Settings Not Found. Please contact support."
         )
@@ -1347,20 +1444,15 @@ async def print_invoice(
                     "as": "company",
                 }
             },
-            {
-                "$lookup": {
-                    "from": "Accounting",
-                    "localField": "_id",
-                    "foreignField": "vouchar_id",
-                    "as": "accounting_entries",
-                }
-            },
             # Attach inventory
             {
                 "$lookup": {
                     "from": "Inventory",
-                    "localField": "_id",
-                    "foreignField": "vouchar_id",
+                    "let": {"vouchar_id": "$_id"},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$vouchar_id", "$$vouchar_id"]}}},
+                        {"$sort": {"order_index": 1}},
+                    ],
                     "as": "inventory",
                 }
             },
@@ -1374,7 +1466,6 @@ async def print_invoice(
             },
             {"$unwind": {"path": "$company", "preserveNullAndEmptyArrays": True}},
             {"$unwind": {"path": "$party_details", "preserveNullAndEmptyArrays": True}},
-            {"$project": {"accounting_entries": 0}},
         ]
     ).to_list(length=1)
 
@@ -1403,7 +1494,7 @@ async def print_invoice(
 
     grand_total = invoice.get("grand_total", 0)
     total_words = num2words(grand_total, lang="en_IN").title() + " Rupees Only"
-    formatted_date =  invoice.get("date", "")[:10] if invoice.get("date", "") else ""
+    formatted_date = invoice.get("date", "")[:10] if invoice.get("date", "") else ""
 
     # Template variables
     template_vars = {
@@ -1522,7 +1613,10 @@ async def print_invoice_tax(
             {
                 "$addFields": {
                     "inventory": {
-                        "$sortArray": {"input": "$inventory", "sortBy": {"created_at": 1}}
+                        "$sortArray": {
+                            "input": "$inventory",
+                            "sortBy": {"order_index": 1},
+                        }
                     }
                 }
             },
@@ -1585,8 +1679,9 @@ async def print_invoice_tax(
         company=invoice.get("company", {}),
         current_user=current_user,
     )
+    print("Tax Code", tax_code)
 
-    formatted_date =  invoice.get("date", "")[:10] if invoice.get("date", "") else ""
+    formatted_date = invoice.get("date", "")[:10] if invoice.get("date", "") else ""
     # Template variables
     template_vars = {
         "invoice": {
@@ -1744,8 +1839,11 @@ async def print_receipt(
             {
                 "$lookup": {
                     "from": "Accounting",
-                    "localField": "_id",
-                    "foreignField": "vouchar_id",
+                    "let": {"vouchar_id": "$_id"},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$vouchar_id", "$$vouchar_id"]}}},
+                        {"$sort": {"order_index": 1}},
+                    ],
                     "as": "accounting_entries",
                 }
             },
@@ -1810,7 +1908,7 @@ async def print_receipt(
     else:
         total_words = num2words(total_int, lang="en_IN").title() + " Rupees Only"
 
-    formatted_date =  invoice.get("date", "")[:10] if invoice.get("date", "") else ""
+    formatted_date = invoice.get("date", "")[:10] if invoice.get("date", "") else ""
 
     template_vars = {
         "invoice": {
@@ -1882,8 +1980,11 @@ async def print_payment(
             {
                 "$lookup": {
                     "from": "Accounting",
-                    "localField": "_id",
-                    "foreignField": "vouchar_id",
+                    "let": {"vouchar_id": "$_id"},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$vouchar_id", "$$vouchar_id"]}}},
+                        {"$sort": {"order_index": 1}},
+                    ],
                     "as": "accounting_entries",
                 }
             },
@@ -1958,7 +2059,7 @@ async def print_payment(
         total_words = num2words(total_int, lang="en_IN").title() + " Rupees Only"
 
     # Template variables
-    formatted_date =  invoice.get("date", "")[:10] if invoice.get("date", "") else ""
+    formatted_date = invoice.get("date", "")[:10] if invoice.get("date", "") else ""
 
     # Extract year from "2025-05-01" style date string
     year_val = ""
@@ -2051,16 +2152,22 @@ async def get_vouchar(
             {
                 "$lookup": {
                     "from": "Accounting",
-                    "localField": "_id",
-                    "foreignField": "vouchar_id",
+                    "let": {"vouchar_id": "$_id"},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$vouchar_id", "$$vouchar_id"]}}},
+                        {"$sort": {"order_index": 1}},
+                    ],
                     "as": "accounting",
                 }
             },
             {
                 "$lookup": {
                     "from": "Inventory",
-                    "localField": "_id",
-                    "foreignField": "vouchar_id",
+                    "let": {"vouchar_id": "$_id"},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$vouchar_id", "$$vouchar_id"]}}},
+                        # {"$sort": {"order_index": 1}},
+                    ],
                     "as": "inventory",
                 }
             },
@@ -2099,10 +2206,7 @@ async def get_vouchar(
                     "party_name": 1,
                     "party_name_id": 1,
                     "narration": 1,
-                    # "amount": "$ledger_entries.amount",
                     "balance_type": 1,
-                    # "ledger_name": "$ledger_entries.ledgername',",
-                    # "is_deemed_positive": "$ledger_entries.is_deemed_positive",
                     "ledger_entries": 1,
                     "created_at": 1,
                 }
